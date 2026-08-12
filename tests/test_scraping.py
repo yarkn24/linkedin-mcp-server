@@ -48,6 +48,31 @@ class TestBuildJobSearchUrl:
         assert "keywords=python" in url
         assert "location=Remote" in url
 
+    def test_geo_id_emitted(self):
+        """geoId is LinkedIn's authoritative location parameter. The free-text
+        `location` param is only a display hint: loading /jobs/search/ with
+        `location` alone lets LinkedIn silently fall back to the member's own
+        profile-based feed instead of applying the filter."""
+        url = LinkedInExtractor._build_job_search_url("python", geo_id="91000007")
+        assert "geoId=91000007" in url
+
+    def test_geo_id_omitted_when_absent(self):
+        url = LinkedInExtractor._build_job_search_url("python")
+        assert "geoId" not in url
+
+    def test_geo_id_with_location(self):
+        """Both are sent together, mirroring what the browser typeahead does when
+        a user picks a location from the dropdown."""
+        url = LinkedInExtractor._build_job_search_url(
+            "python", location="Europe, Middle East and Africa", geo_id="91000007"
+        )
+        assert "geoId=91000007" in url
+        assert "location=Europe%2C+Middle+East+and+Africa" in url
+
+    def test_geo_id_is_url_encoded(self):
+        url = LinkedInExtractor._build_job_search_url("python", geo_id="a b")
+        assert "geoId=a+b" in url
+
     def test_date_posted_normalization(self):
         url = LinkedInExtractor._build_job_search_url("python", date_posted="past_week")
         assert "f_TPR=r604800" in url

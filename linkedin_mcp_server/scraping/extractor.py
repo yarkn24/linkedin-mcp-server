@@ -3190,6 +3190,7 @@ class LinkedInExtractor:
     def _build_job_search_url(
         keywords: str,
         location: str | None = None,
+        geo_id: str | None = None,
         date_posted: str | None = None,
         job_type: str | None = None,
         experience_level: str | None = None,
@@ -3202,10 +3203,21 @@ class LinkedInExtractor:
         Human-readable names are normalized to LinkedIn URL codes.
         Comma-separated values are normalized individually.
         Unknown values pass through unchanged.
+
+        `geo_id` is LinkedIn's authoritative location parameter. The free-text
+        `location` parameter is only a display hint: when /jobs/search/ is loaded
+        with `location` alone, LinkedIn does not reliably apply the filter and can
+        silently substitute the member's own profile-based "Jobs you may be
+        interested in" feed, which returns results for the wrong geography with no
+        error and no indication in the response. Sending `geoId` alongside
+        `location` is what the browser does when a user picks a location from the
+        typeahead dropdown, and it makes the geography deterministic.
         """
         params = f"keywords={quote_plus(keywords)}"
         if location:
             params += f"&location={quote_plus(location)}"
+        if geo_id:
+            params += f"&geoId={quote_plus(geo_id)}"
 
         if date_posted:
             mapped = _JOB_DATE_POSTED_MAP.get(date_posted.strip(), date_posted)
@@ -3228,6 +3240,7 @@ class LinkedInExtractor:
         self,
         keywords: str,
         location: str | None = None,
+        geo_id: str | None = None,
         max_pages: int = 3,
         date_posted: str | None = None,
         job_type: str | None = None,
@@ -3245,6 +3258,10 @@ class LinkedInExtractor:
         Args:
             keywords: Search keywords
             location: Optional location filter
+            geo_id: Optional LinkedIn geoId, the authoritative location parameter.
+                Prefer sending it whenever the geography matters: `location` alone
+                is a display hint and LinkedIn may silently return a profile-based
+                feed for the wrong geography instead.
             max_pages: Maximum pages to load (1-10, default 3)
             date_posted: Filter by date posted (past_hour, past_24_hours, past_week, past_month)
             job_type: Filter by job type (full_time, part_time, contract, temporary, volunteer, internship, other)
@@ -3259,6 +3276,7 @@ class LinkedInExtractor:
         base_url = self._build_job_search_url(
             keywords,
             location=location,
+            geo_id=geo_id,
             date_posted=date_posted,
             job_type=job_type,
             experience_level=experience_level,

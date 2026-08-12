@@ -81,6 +81,7 @@ def register_job_tools(
         keywords: str,
         ctx: Context,
         location: str | None = None,
+        geo_id: str | None = None,
         max_pages: Annotated[int, Field(ge=1, le=10)] = 3,
         date_posted: str | None = None,
         job_type: str | None = None,
@@ -98,7 +99,15 @@ def register_job_tools(
         Args:
             keywords: Search keywords (e.g., "software engineer", "data scientist")
             ctx: FastMCP context for progress reporting
-            location: Optional location filter (e.g., "San Francisco", "Remote")
+            location: Optional location filter (e.g., "San Francisco", "Remote"). This is a
+                display hint only. Sent on its own it does NOT reliably constrain the search:
+                LinkedIn may silently return your own profile-based "Jobs you may be interested
+                in" feed for a different geography, with no error. Pass geo_id whenever the
+                geography matters.
+            geo_id: Optional LinkedIn geoId, the authoritative location parameter (e.g.
+                "91000007" for Europe/Middle East/Africa, "102105699" for Turkiye). This is what
+                the browser attaches when a user picks a location from the typeahead dropdown.
+                Send it together with location for deterministic geography.
             max_pages: Maximum number of result pages to load (1-10, default 3)
             date_posted: Filter by posting date (past_hour, past_24_hours, past_week, past_month)
             job_type: Filter by job type, comma-separated (full_time, part_time, contract, temporary, volunteer, internship, other)
@@ -116,9 +125,10 @@ def register_job_tools(
                 ctx, tool_name="search_jobs"
             )
             logger.info(
-                "Searching jobs: keywords='%s', location='%s', max_pages=%d",
+                "Searching jobs: keywords='%s', location='%s', geo_id='%s', max_pages=%d",
                 keywords,
                 location,
+                geo_id,
                 max_pages,
             )
 
@@ -129,6 +139,7 @@ def register_job_tools(
             result = await extractor.search_jobs(
                 keywords,
                 location=location,
+                geo_id=geo_id,
                 max_pages=max_pages,
                 date_posted=date_posted,
                 job_type=job_type,
