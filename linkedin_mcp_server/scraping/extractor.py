@@ -3054,21 +3054,35 @@ class LinkedInExtractor:
         return result
 
     async def _extract_job_ids(self) -> list[str]:
-        """Extract unique job IDs from job card links on the current page.
+        """Extract unique job IDs from the current page.
 
-        Finds all `a[href*="/jobs/view/"]` links and extracts the numeric
-        job ID from each href. Returns deduplicated IDs in DOM order.
+        Unions two sources: `a[href*="/jobs/view/"]` links (the original
+        signal) and `li[data-occludable-job-id]` attributes. LinkedIn
+        virtualizes each search-result card's anchor/title content, so an
+        unscrolled page renders an anchor for only a fraction of its cards
+        (measured live: 9 of 25); the `data-occludable-job-id` attribute is
+        present on every card regardless, so it fills in whatever the
+        anchor pass misses without needing a completed scroll first.
+        Returns deduplicated IDs in DOM order, anchor ids first.
         """
         return await self._page.evaluate(
             """() => {
-                const links = document.querySelectorAll('a[href*="/jobs/view/"]');
                 const seen = new Set();
                 const ids = [];
+                const links = document.querySelectorAll('a[href*="/jobs/view/"]');
                 for (const a of links) {
                     const match = a.href.match(/\\/jobs\\/view\\/(\\d+)/);
                     if (match && !seen.has(match[1])) {
                         seen.add(match[1]);
                         ids.push(match[1]);
+                    }
+                }
+                const cards = document.querySelectorAll('li[data-occludable-job-id]');
+                for (const li of cards) {
+                    const id = li.getAttribute('data-occludable-job-id');
+                    if (id && !seen.has(id)) {
+                        seen.add(id);
+                        ids.push(id);
                     }
                 }
                 return ids;
@@ -3135,7 +3149,9 @@ class LinkedInExtractor:
 
         await handle_modal_close(self._page)
         if main_found:
-            await scroll_job_sidebar(self._page, pause_time=0.5, max_scrolls=5)
+            await scroll_job_sidebar(
+                self._page, pause_time=1.0, step=4, expected_items=_PAGE_SIZE
+            )
 
         raw_result = await self._extract_root_content(["main"])
         raw = raw_result["text"]
