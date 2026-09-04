@@ -87,67 +87,40 @@ async def scroll_to_bottom(
 
 
 async def scroll_job_sidebar(
-    page: Page, pause_time: float = 1.0, max_scrolls: int = 10
+    page: Page, pause_time: float = 1.0, step: int = 4, expected_items: int = 25
 ) -> None:
-    """Scroll the job search sidebar to load all job cards.
+    """Render LinkedIn's occluded job search cards via paced scrollIntoView.
 
-    LinkedIn renders job search results in a scrollable sidebar container,
-    not the main page body. This function finds that container by locating
-    a job card link and walking up to its scrollable ancestor, then scrolls
-    it iteratively until no new content loads.
+    LinkedIn virtualizes each `li.scaffold-layout__list-item` card's anchor
+    and title content: only cards that have been in view render it, and a
+    bulk jump to the scroll container's bottom does not force the ones in
+    between to render (measured live: a container-scrollHeight jump left
+    most cards unrendered). Nudging every `step`-th card into view with a
+    pause between nudges gives each one time to render before the next.
 
     Args:
         page: Patchright page object
-        pause_time: Time to pause between scrolls (seconds)
-        max_scrolls: Maximum number of scroll attempts
+        pause_time: Pause after each nudge (seconds)
+        step: Nudge every Nth card into view
+        expected_items: Number of cards LinkedIn renders per search page
     """
-    # Wait for at least one job card link to render before scrolling
     try:
-        await page.wait_for_selector('a[href*="/jobs/view/"]', timeout=5000)
+        await page.wait_for_selector("li.scaffold-layout__list-item", timeout=5000)
     except PlaywrightTimeoutError:
-        logger.debug("No job card links found, skipping sidebar scroll")
+        logger.debug("No job list items found, skipping sidebar scroll")
         return
 
-    scrolled = await page.evaluate(
-        """async ({pauseTime, maxScrolls}) => {
-            const link = document.querySelector('a[href*="/jobs/view/"]');
-            if (!link) return -2;
-
-            let container = link.parentElement;
-            while (container && container !== document.body) {
-                const style = window.getComputedStyle(container);
-                const overflowY = style.overflowY;
-                if ((overflowY === 'auto' || overflowY === 'scroll')
-                    && container.scrollHeight > container.clientHeight) {
-                    break;
-                }
-                container = container.parentElement;
-            }
-
-            if (!container || container === document.body) {
-                return -1;
-            }
-
-            let scrollCount = 0;
-            for (let i = 0; i < maxScrolls; i++) {
-                const prevHeight = container.scrollHeight;
-                container.scrollTop = container.scrollHeight;
-                await new Promise(r => setTimeout(r, pauseTime * 1000));
-                if (container.scrollHeight === prevHeight) break;
-                scrollCount++;
-            }
-            return scrollCount;
-        }""",
-        {"pauseTime": pause_time, "maxScrolls": max_scrolls},
-    )
-    if scrolled == -2:
-        logger.debug("Job card link disappeared before evaluate, skipping scroll")
-    elif scrolled == -1:
-        logger.debug("No scrollable container found for job sidebar")
-    elif scrolled:
-        logger.debug("Scrolled job sidebar %d times", scrolled)
-    else:
-        logger.debug("Job sidebar container found but no new content loaded")
+    for i in range(0, expected_items, step):
+        await page.evaluate(
+            """(i) => {
+                const items = document.querySelectorAll('li.scaffold-layout__list-item');
+                const item = items[i];
+                if (item) item.scrollIntoView({block: 'center'});
+                return items.length;
+            }""",
+            i,
+        )
+        await asyncio.sleep(pause_time)
 
 
 async def handle_modal_close(page: Page) -> bool:
